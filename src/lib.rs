@@ -11,13 +11,6 @@ use cln_rpc::{model, ClnRpc, Request};
 
 use std::sync::{Arc, RwLock};
 
-// Config stuff
-
-
-
-
-// CLN stuff
-
 pub async fn disconnect_peer(pubkey: cln_rpc::primitives::Pubkey) -> Result<(), Error> {
     log::info!("Disconnecting from peer: {:?}", pubkey);
     let req = Request::Disconnect(model::DisconnectRequest { id: pubkey, force: Some(true) });
@@ -109,6 +102,70 @@ async fn call(request: Request) -> Result<String, Error> {
         .map_err(|e| anyhow!("Error calling {:?}: {:?}", request, e))?;
 
     Ok(serde_json::to_string_pretty(&response)?)
+}
+
+
+pub async fn start_handler(
+    _p: Plugin<()>, _v:serde_json::Value
+) -> Result<serde_json::Value, Error> {
+    log::info!("Plugin start requested");
+    let c = Config::current();
+    let active = true;
+    Config {
+        active
+    }.make_current();
+
+    Ok(json!("ok"))
+}
+
+pub async fn stop_handler(
+    _p: Plugin<()>, _v:serde_json::Value
+) -> Result<serde_json::Value, Error> {
+    log::info!("Plugin stop requested");
+    let c = Config::current();
+    let active = false;
+    Config {
+        active
+    }.make_current();
+
+    Ok(json!("ok"))
+}
+
+#[derive(Default, Debug)]
+pub struct Config {
+    pub active: bool,
+}
+
+impl Config {
+    pub fn default() -> Config {
+        Config {
+            active: true,
+        }
+    }
+
+    pub fn current() -> Arc<Config> {
+        CURRENT_CONFIG.with(|c| c.read().unwrap().clone())
+    }
+    pub fn make_current(self) {
+        CURRENT_CONFIG.with(|c| *c.write().unwrap() = Arc::new(self))
+    }
+}
+
+thread_local! {
+    static CURRENT_CONFIG: RwLock<Arc<Config>> = RwLock::new(Default::default());
+}
+
+pub fn load_configuration(plugin: &Plugin<()>) -> Result<Arc<Config>, Error> {
+    let c = Config::default();
+
+    let active = false;
+
+    Config {
+        active
+    }
+    .make_current();
+    log::info!("Configuration loaded: {:?}", Config::current());
+    Ok(Config::current())
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
