@@ -117,14 +117,16 @@ pub async fn maybe_keysend_random_node() -> Result<(), Error> {
 pub async fn maybe_open_channel() -> Result<(), Error> {
     let nodes = list_nodes().await.unwrap();
     for node in nodes {
-        log::debug!("Node under consideration: {:?}", node);
-        let probability = 0.5; // 5% probability
+        log::debug!("Perhaps open channel for node: {:?}", node);
+        let probability = 0.005; // 5% probability
 
         if rand::random::<f64>() < probability {
+            
             let amount: u64 = random::<u64>() % 1000000 + 500000;
+            
             match node.alias {
                 Some(alias) => {
-                    match open_channel(node.nodeid, alias, Amount::from_msat(amount)).await {
+                    match open_channel(node.nodeid, alias, amount).await {
                         Ok(_) => {
                             log::info!("Successfully opened channel");
                         },
@@ -137,7 +139,7 @@ pub async fn maybe_open_channel() -> Result<(), Error> {
                     log::debug!("Unable to try to open channel, do not have alias")
                 }
             }
-
+        
             
         }
         

@@ -298,13 +298,19 @@ pub struct ConnectResponseResponse {
     pub result: model::ConnectResponse
 }
 
-pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String, size: Amount) -> Result<String, Error> {
+pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String, size: u64) -> Result<(), Error> {
     let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
-    let res = call(req).await?;
-    log::info!("Tried peering! {:?}", res);
+    match call(req).await {
+        Ok(res) => {
+            let de: ConnectResponseResponse = serde_json::from_str(&res).unwrap();
+            log::info!("Tried peering! {:?}", res);
+        },
+        Err(e) => {
+            return Err(e)
+        }
+    }
 
-    let de: ConnectResponseResponse = serde_json::from_str(&res).unwrap();
-    let amount = cln_rpc::primitives::AmountOrAll::Amount(cln_rpc::primitives::Amount::from_msat(size.msat()) );
+    let amount = cln_rpc::primitives::AmountOrAll::Amount(cln_rpc::primitives::Amount::from_sat(size));
     let open_req = Request::FundChannel(model::FundchannelRequest {
         id: pubkey, 
         amount: amount,
@@ -319,10 +325,17 @@ pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String,
         mindepth: None,
         reserve: None,
     });
-    let open_res = call(open_req).await?;
-    log::info!("Tried opening! {:?}", open_res);
+    match call(open_req).await {
+        Ok(res) => {
+            log::info!("Opened channel: {:?}", res);
+        },
+        Err(e) => {
+            log::error!("Unable to open channel: {:?}", e);
+            return Err(e)
+        }
+    }
 
-    Ok("Opened?".to_string())
+    Ok(())
 } 
 
 // General
