@@ -297,8 +297,25 @@ pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String,
     let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
     let res = call(req).await?;
     log::info!("Tried peering! {:?}", res);
-    
+
     let de: ConnectResponse = serde_json::from_str(&res).unwrap();
+    let amount = cln_rpc::primitives::AmountOrAll::Amount(cln_rpc::primitives::Amount::from_msat(size.msat()) );
+    let open_req = Request::FundChannel(model::FundchannelRequest {
+        id: pubkey, 
+        amount: amount,
+        feerate: None,
+        announce: None,
+        minconf: None,
+        push_msat: None,
+        close_to: None,
+        request_amt: None,
+        compact_lease: None,
+        utxos: None,
+        mindepth: None,
+        reserve: None,
+    });
+    let open_res = call(open_req).await?;
+    log::info!("Tied opening! {:?}", open_res);
 
     Ok("Opened?".to_string())
 } 
