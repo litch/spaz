@@ -96,7 +96,7 @@ pub async fn maybe_keysend_random_node() -> Result<(), Error> {
     let nodes = list_nodes().await.unwrap();
     for node in nodes {
         log::debug!("Node under consideration: {:?}", node);
-        let probability = 0.05; // 5% probability
+        let probability = 0.01; // 1% probability
 
         if rand::random::<f64>() < probability {
             let amount: u64 = random::<u64>() % 700000 + 500;
@@ -118,7 +118,7 @@ pub async fn maybe_open_channel() -> Result<(), Error> {
     let nodes = list_nodes().await.unwrap();
     for node in nodes {
         log::debug!("Perhaps open channel for node: {:?}", node);
-        let probability = 0.005; // 5% probability
+        let probability = 0.0003; // 0.03% probability
 
         if rand::random::<f64>() < probability {
             
@@ -151,9 +151,9 @@ pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
     if config.active == false {
         // return Ok(())
     }
-    // maybe_keysend_random_channel().await;
-    // maybe_disconnect_random_peer().await;
-    // maybe_keysend_random_node().await;
+    maybe_keysend_random_channel().await;
+    maybe_disconnect_random_peer().await;
+    maybe_keysend_random_node().await;
     maybe_open_channel().await;
     Ok(())
 }
