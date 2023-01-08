@@ -293,12 +293,17 @@ pub async fn randomize_fee(short_channel_id: &String) -> Result<(), Error> {
 
 // Open channel
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ConnectResponseResponse { 
+    pub result: model::ConnectResponse
+}
+
 pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String, size: Amount) -> Result<String, Error> {
     let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
     let res = call(req).await?;
     log::info!("Tried peering! {:?}", res);
 
-    let de: ConnectResponse = serde_json::from_str(&res).unwrap();
+    let de: ConnectResponseResponse = serde_json::from_str(&res).unwrap();
     let amount = cln_rpc::primitives::AmountOrAll::Amount(cln_rpc::primitives::Amount::from_msat(size.msat()) );
     let open_req = Request::FundChannel(model::FundchannelRequest {
         id: pubkey, 
@@ -315,7 +320,7 @@ pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String,
         reserve: None,
     });
     let open_res = call(open_req).await?;
-    log::info!("Tied opening! {:?}", open_res);
+    log::info!("Tried opening! {:?}", open_res);
 
     Ok("Opened?".to_string())
 } 
