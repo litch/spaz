@@ -27,26 +27,17 @@ jobs:
           #   os: ubuntu-latest
           # - target: aarch64-apple-darwin
           #   os: macos-latest
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            build_tool: cargo
+          # - target: x86_64-unknown-linux-gnu
+          #   os: ubuntu-latest
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            build_tool: cross
           # - target: x86_64-apple-darwin
           #   os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Enable cross compliation
-        run: |
-          env PKG_CONFIG_ALLOW_CROSS=1
-          echo $PKG_CONFIG_ALLOW_CROSS
-      - name: Install Openssl Build Dependencies
-        run: sudo apt-get update && sudo apt-get install pkg-config libssl-dev clang
       - uses: actions/checkout@v3
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
-          bin: spaz
+          bin: sluggish
           target: ${{ matrix.target }}
-          build_tool: ${{ matrix.build_tool }}
           token: ${{ secrets.GITHUB_TOKEN }}

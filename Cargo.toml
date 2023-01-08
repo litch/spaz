@@ -10,6 +10,7 @@ name = "spaz"
 path = "src/lib.rs"
 
 [dependencies]
+openssl = { version = "0.10.42", features = ["vendored"]}
 tokio = { version = "1.18.2", features = ["full"] }
 cln-plugin = "0.1.0"
 cln-rpc = {version = "0.1.2"}
