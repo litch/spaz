@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 use tokio;
 use tokio::{task, time};
 
-use spaz::{load_configuration, Config, list_channels, Amount, keysend_node, stop_handler, start_handler, list_peers, disconnect_peer, list_nodes};
+use spaz::{load_configuration, Config, list_channels, randomize_fee, Amount, keysend_node, stop_handler, start_handler, list_peers, disconnect_peer, list_nodes};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -58,6 +58,19 @@ pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
     }
     let channels = list_channels().await.unwrap();
     for channel in channels {
+        let probability = 0.02;
+        if rand::random::<f64>() < probability {
+            match channel.short_channel_id {
+                Some(id) => {
+                    log::info!("Randomizing channel fee for {}", &id);
+                    randomize_fee(&id).await.unwrap();
+                },
+                None => {
+                    log::debug!("No scid, so not randomizing")
+                }
+            }
+            
+        }
         // log::debug!("Channel under consideration: {:?}", channel);
         // match configure_channel(&channel, &config).await {
         //     Ok(_) => log::debug!("Channel successfuly configured"),

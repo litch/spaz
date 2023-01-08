@@ -4,6 +4,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use anyhow::{anyhow, Error, Result};
 use std::path::Path;
 extern crate rand;
+use rand::{random};
+
 
 use cln_plugin::{Plugin};
 
@@ -11,7 +13,7 @@ use cln_rpc::{model, ClnRpc, Request};
 
 use std::sync::{Arc, RwLock};
 
-pub async fn disconnect_peer(pubkey: cln_rpc::primitives::Pubkey) -> Result<(), Error> {
+pub async fn disconnect_peer(pubkey: cln_rpc::primitives::PublicKey) -> Result<(), Error> {
     log::info!("Disconnecting from peer: {:?}", pubkey);
     let req = Request::Disconnect(model::DisconnectRequest { id: pubkey, force: Some(true) });
     let res = call(req).await?;
@@ -150,7 +152,7 @@ pub struct ListPeersResponsePeers {
 #[derive(Debug, Deserialize)]
 pub struct Peer {
     #[serde(alias = "id")]
-    pub id: cln_rpc::primitives::Pubkey,
+    pub id: cln_rpc::primitives::PublicKey,
     #[serde(alias = "connected")]
     pub connected: bool,
 }
@@ -178,7 +180,7 @@ pub struct ListNodesResponseNodes {
 #[derive(Debug, Deserialize)]
 pub struct Node {
     #[serde(alias = "nodeid")]
-    pub nodeid: cln_rpc::primitives::Pubkey,
+    pub nodeid: cln_rpc::primitives::PublicKey,
     #[serde(alias = "last_timestamp", skip_serializing_if = "Option::is_none")]
     pub last_timestamp: Option<u32>,
     #[serde(alias = "alias", skip_serializing_if = "Option::is_none")]
@@ -249,22 +251,44 @@ pub struct KeysendResponseResponse {
     pub result: model::KeysendResponse
 }
 
-pub async fn keysend_node(pubkey: cln_rpc::primitives::Pubkey, amount: Amount) -> Result<(), Error> {
+pub async fn keysend_node(pubkey: cln_rpc::primitives::PublicKey, amount: Amount) -> Result<(), Error> {
     log::info!("Keysending node {:?}, {:?}", pubkey, amount);
     let req = Request::KeySend(model::KeysendRequest { 
         destination: pubkey, 
-        msatoshi: cln_rpc::primitives::Amount::from_msat(amount.msat()),
+        amount_msat: cln_rpc::primitives::Amount::from_msat(amount.msat()),
         label: None,
         maxfeepercent: None,
         retry_for: None,
         maxdelay: None,
         exemptfee: None,
-        routehints: None,}
+        routehints: None,
+        extratlvs: None,
+    }
     );
     let res = call(req).await?;
     log::debug!("Keysend response {}", &res);
     let de: KeysendResponseResponse = serde_json::from_str(&res).unwrap();
     
+    Ok(())
+}
+
+// Randomize fee
+
+pub async fn randomize_fee(short_channel_id: &String) -> Result<(), Error> {
+    
+    let random_ppm: u32 = random::<u32>() % 700 + 50;
+    let random_base: u64 = random::<u64>() % 1500 + 1;
+    let req = Request::SetChannel(model::SetchannelRequest {
+        id: short_channel_id.to_string(),
+        feeppm: Some(random_ppm),
+        feebase: Some(cln_rpc::primitives::Amount::from_msat(random_base)),
+        htlcmin: None,
+        htlcmax: None,
+        enforcedelay: None,
+    });
+    let res = call(req).await?;
+    log::info!("Set channel: {:?}", res);
+
     Ok(())
 }
 
