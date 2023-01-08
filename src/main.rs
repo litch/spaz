@@ -63,7 +63,10 @@ pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
             match channel.short_channel_id {
                 Some(id) => {
                     log::info!("Randomizing channel fee for {}", &id);
-                    randomize_fee(&id).await.unwrap();
+                    match randomize_fee(&id).await {
+                        Ok(_) => log::debug!("Successfully randomized fee"),
+                        Err(e) => log::error!("Error configuring channel: {:?}", e),
+                    }
                 },
                 None => {
                     log::debug!("No scid, so not randomizing")
@@ -71,11 +74,6 @@ pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
             }
             
         }
-        // log::debug!("Channel under consideration: {:?}", channel);
-        // match configure_channel(&channel, &config).await {
-        //     Ok(_) => log::debug!("Channel successfuly configured"),
-        //     Err(e) => log::error!("Error configuring channel: {:?}", e),
-        // };
     }
     let peers = list_peers().await.unwrap();
     for peer in peers {
