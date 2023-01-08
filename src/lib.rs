@@ -9,7 +9,7 @@ use rand::{random};
 
 use cln_plugin::{Plugin};
 
-use cln_rpc::{model, ClnRpc, Request};
+use cln_rpc::{model::{self, ConnectResponse}, ClnRpc, Request};
 
 use std::sync::{Arc, RwLock};
 
@@ -275,7 +275,6 @@ pub async fn keysend_node(pubkey: cln_rpc::primitives::PublicKey, amount: Amount
 // Randomize fee
 
 pub async fn randomize_fee(short_channel_id: &String) -> Result<(), Error> {
-    
     let random_ppm: u32 = random::<u32>() % 700 + 50;
     let random_base: u64 = random::<u64>() % 1500 + 1;
     let req = Request::SetChannel(model::SetchannelRequest {
@@ -291,6 +290,18 @@ pub async fn randomize_fee(short_channel_id: &String) -> Result<(), Error> {
 
     Ok(())
 }
+
+// Open channel
+
+pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String, size: Amount) -> Result<String, Error> {
+    let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
+    let res = call(req).await?;
+    log::info!("Tried peering! {:?}", res);
+    
+    let de: ConnectResponse = serde_json::from_str(&res).unwrap();
+
+    Ok("Opened?".to_string())
+} 
 
 // General
 

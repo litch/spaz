@@ -4,6 +4,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use anyhow::{anyhow, Error, Result};
 use std::path::Path;
 extern crate rand;
+use rand::{random};
 
 use cln_plugin::{Builder, Plugin};
 use std::time::Duration;
@@ -14,7 +15,7 @@ use std::sync::{Arc, RwLock};
 use tokio;
 use tokio::{task, time};
 
-use spaz::{load_configuration, Config, list_channels, randomize_fee, Amount, keysend_node, stop_handler, start_handler, list_peers, disconnect_peer, list_nodes};
+use spaz::{load_configuration, Config, list_channels, randomize_fee, Amount, keysend_node, open_channel, stop_handler, start_handler, list_peers, disconnect_peer, list_nodes};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -52,10 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
-    if config.active == false {
-        // return Ok(())
-    }
+pub async fn maybe_keysend_random_channel() -> Result<(), Error> {
     let channels = list_channels().await.unwrap();
     for channel in channels {
         let probability = 0.02;
@@ -75,6 +73,10 @@ pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
             
         }
     }
+    Ok(())
+}
+
+pub async fn maybe_disconnect_random_peer() -> Result<(), Error> {
     let peers = list_peers().await.unwrap();
     for peer in peers {
         log::debug!("Peer under consideration: {:?}", peer);
@@ -87,13 +89,18 @@ pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
             
         }
     }
+    Ok(())
+}
+
+pub async fn maybe_keysend_random_node() -> Result<(), Error> {
     let nodes = list_nodes().await.unwrap();
     for node in nodes {
         log::debug!("Node under consideration: {:?}", node);
         let probability = 0.05; // 5% probability
 
         if rand::random::<f64>() < probability {
-            match keysend_node(node.nodeid, Amount::from_msat(450)).await {
+            let amount: u64 = random::<u64>() % 700000 + 500;
+            match keysend_node(node.nodeid, Amount::from_msat(amount)).await {
                 Ok(_) => {
                     log::info!("Successful keysend");
                 },
@@ -104,5 +111,47 @@ pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
         }
         
     }
+    Ok(())
+}
+
+pub async fn maybe_open_channel() -> Result<(), Error> {
+    let nodes = list_nodes().await.unwrap();
+    for node in nodes {
+        log::debug!("Node under consideration: {:?}", node);
+        let probability = 0.5; // 5% probability
+
+        if rand::random::<f64>() < probability {
+            let amount: u64 = random::<u64>() % 1000000 + 500000;
+            match node.alias {
+                Some(alias) => {
+                    match open_channel(node.nodeid, alias, Amount::from_msat(amount)).await {
+                        Ok(_) => {
+                            log::info!("Successfully opened channel");
+                        },
+                        Err(err) => {
+                            log::warn!("Error attempting to connect: {}", err);
+                        }
+                    }
+                },
+                None => {
+                    log::debug!("Unable to try to open channel, do not have alias")
+                }
+            }
+
+            
+        }
+        
+    }
+    Ok(())
+}
+
+pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
+    if config.active == false {
+        // return Ok(())
+    }
+    // maybe_keysend_random_channel().await;
+    // maybe_disconnect_random_peer().await;
+    // maybe_keysend_random_node().await;
+    maybe_open_channel().await;
     Ok(())
 }
