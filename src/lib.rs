@@ -17,92 +17,7 @@ pub async fn disconnect_peer(pubkey: cln_rpc::primitives::Pubkey) -> Result<(), 
     let res = call(req).await?;
     Ok(())
 }
-
-
-#[derive(Debug, Deserialize)]
-pub struct ListFundsResponse {
-    pub result: ListFundsResponseFunds,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ListFundsResponseFunds {
-    pub channels: Vec<Channel>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct Channel {
-    pub peer_id: String,
-    pub connected: bool,
-    pub state: ChannelState,
-    pub our_amount_msat: Amount,
-    pub amount_msat: Amount,
-    pub funding_txid: String,
-    pub funding_output: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub short_channel_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub enum ChannelState {
-    OPENINGD,
-    CHANNELD_AWAITING_LOCKIN,
-    CHANNELD_NORMAL,
-    CHANNELD_SHUTTING_DOWN,
-    CLOSINGD_SIGEXCHANGE,
-    CLOSINGD_COMPLETE,
-    AWAITING_UNILATERAL,
-    FUNDING_SPEND_SEEN,
-    ONCHAIN,
-    DUALOPENED_OPEN_INIT,
-    DUALOPEND_AWAITING_LOCKIN,
-}
-
-
-pub async fn list_channels() -> Result<Vec<Channel>, Error> {
-    let req = Request::ListFunds(model::ListfundsRequest { spent: Some(false)} );
-    let res = call(req).await?;
-    log::trace!("{}", &res);
-
-    let de: ListFundsResponse = serde_json::from_str(&res).unwrap();
-    Ok(de.result.channels)
-} 
-
-#[derive(Debug, Deserialize)]
-pub struct ListPeersResponse {
-    pub result: ListPeersResponsePeers,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ListPeersResponsePeers {
-    pub peers: Vec<Peer>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Peer {
-    #[serde(alias = "id")]
-    pub id: cln_rpc::primitives::Pubkey,
-    #[serde(alias = "connected")]
-    pub connected: bool,
-}
-
-pub async fn list_peers() -> Result<Vec<Peer>, Error> {
-    let req = Request::ListPeers(model::ListpeersRequest { id: None, level: None });
-    let res = call(req).await?;
-    log::trace!("{}", &res);
-    let de: ListPeersResponse = serde_json::from_str(&res).unwrap();
-    Ok(de.result.peers)
-}
-
-async fn call(request: Request) -> Result<String, Error> {
-    let path = Path::new("lightning-rpc");
-    let mut rpc = ClnRpc::new(path).await?;
-    let response = rpc
-        .call(request.clone())
-        .await
-        .map_err(|e| anyhow!("Error calling {:?}: {:?}", request, e))?;
-
-    Ok(serde_json::to_string_pretty(&response)?)
-}
+// Config stuff
 
 
 pub async fn start_handler(
@@ -158,7 +73,7 @@ thread_local! {
 pub fn load_configuration(plugin: &Plugin<()>) -> Result<Arc<Config>, Error> {
     let c = Config::default();
 
-    let active = false;
+    let active = true;
 
     Config {
         active
@@ -167,6 +82,206 @@ pub fn load_configuration(plugin: &Plugin<()>) -> Result<Arc<Config>, Error> {
     log::info!("Configuration loaded: {:?}", Config::current());
     Ok(Config::current())
 }
+
+// CLN Stuff
+
+// ListChannels
+#[derive(Debug, Deserialize)]
+pub struct ListFundsResponse {
+    pub result: ListFundsResponseFunds,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListFundsResponseFunds {
+    pub channels: Vec<Channel>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Channel {
+    pub peer_id: String,
+    pub connected: bool,
+    pub state: ChannelState,
+    pub our_amount_msat: Amount,
+    pub amount_msat: Amount,
+    pub funding_txid: String,
+    pub funding_output: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short_channel_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub enum ChannelState {
+    OPENINGD,
+    CHANNELD_AWAITING_LOCKIN,
+    CHANNELD_NORMAL,
+    CHANNELD_SHUTTING_DOWN,
+    CLOSINGD_SIGEXCHANGE,
+    CLOSINGD_COMPLETE,
+    AWAITING_UNILATERAL,
+    FUNDING_SPEND_SEEN,
+    ONCHAIN,
+    DUALOPENED_OPEN_INIT,
+    DUALOPEND_AWAITING_LOCKIN,
+}
+
+
+pub async fn list_channels() -> Result<Vec<Channel>, Error> {
+    let req = Request::ListFunds(model::ListfundsRequest { spent: Some(false)} );
+    let res = call(req).await?;
+    log::trace!("{}", &res);
+
+    let de: ListFundsResponse = serde_json::from_str(&res).unwrap();
+    Ok(de.result.channels)
+} 
+
+// ListPeers
+
+
+#[derive(Debug, Deserialize)]
+pub struct ListPeersResponse {
+    pub result: ListPeersResponsePeers,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListPeersResponsePeers {
+    pub peers: Vec<Peer>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Peer {
+    #[serde(alias = "id")]
+    pub id: cln_rpc::primitives::Pubkey,
+    #[serde(alias = "connected")]
+    pub connected: bool,
+}
+
+pub async fn list_peers() -> Result<Vec<Peer>, Error> {
+    let req = Request::ListPeers(model::ListpeersRequest { id: None, level: None });
+    let res = call(req).await?;
+    log::trace!("{}", &res);
+    let de: ListPeersResponse = serde_json::from_str(&res).unwrap();
+    Ok(de.result.peers)
+}
+
+// ListNodes
+
+#[derive(Debug, Deserialize)]
+pub struct ListNodesResponse {
+    pub result: ListNodesResponseNodes,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListNodesResponseNodes {
+    pub nodes: Vec<Node>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Node {
+    #[serde(alias = "nodeid")]
+    pub nodeid: cln_rpc::primitives::Pubkey,
+    #[serde(alias = "last_timestamp", skip_serializing_if = "Option::is_none")]
+    pub last_timestamp: Option<u32>,
+    #[serde(alias = "alias", skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    #[serde(alias = "color", skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(alias = "features", skip_serializing_if = "Option::is_none")]
+    pub features: Option<String>,
+    #[serde(alias = "addresses", skip_serializing_if = "crate::is_none_or_empty")]
+    pub addresses: Option<Vec<ListnodesNodesAddresses>>,
+}
+
+/// Type of connection
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+pub enum ListnodesNodesAddressesType {
+    #[serde(rename = "dns")]
+    DNS,
+    #[serde(rename = "ipv4")]
+    IPV4,
+    #[serde(rename = "ipv6")]
+    IPV6,
+    #[serde(rename = "torv2")]
+    TORV2,
+    #[serde(rename = "torv3")]
+    TORV3,
+    #[serde(rename = "websocket")]
+    WEBSOCKET,
+}
+
+impl TryFrom<i32> for ListnodesNodesAddressesType {
+    type Error = anyhow::Error;
+    fn try_from(c: i32) -> Result<ListnodesNodesAddressesType, anyhow::Error> {
+        match c {
+    0 => Ok(ListnodesNodesAddressesType::DNS),
+    1 => Ok(ListnodesNodesAddressesType::IPV4),
+    2 => Ok(ListnodesNodesAddressesType::IPV6),
+    3 => Ok(ListnodesNodesAddressesType::TORV2),
+    4 => Ok(ListnodesNodesAddressesType::TORV3),
+    5 => Ok(ListnodesNodesAddressesType::WEBSOCKET),
+            o => Err(anyhow::anyhow!("Unknown variant {} for enum ListnodesNodesAddressesType", o)),
+        }
+    }
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ListnodesNodesAddresses {
+    // Path `ListNodes.nodes[].addresses[].type`
+    #[serde(rename = "type")]
+    pub item_type: ListnodesNodesAddressesType,
+    #[serde(alias = "port")]
+    pub port: u16,
+    #[serde(alias = "address", skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+}
+
+
+pub async fn list_nodes() -> Result<Vec<Node>, Error> {
+    let req = Request::ListNodes(model::ListnodesRequest {id: None});
+    let res = call(req).await?;
+    log::trace!("{}", &res);
+    let de: ListNodesResponse = serde_json::from_str(&res).unwrap();
+    Ok(de.result.nodes)
+}
+
+// Keysend a node
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct KeysendResponseResponse { 
+    pub result: model::KeysendResponse
+}
+
+pub async fn keysend_node(pubkey: cln_rpc::primitives::Pubkey, amount: Amount) -> Result<(), Error> {
+    log::info!("Keysending node {:?}, {:?}", pubkey, amount);
+    let req = Request::KeySend(model::KeysendRequest { 
+        destination: pubkey, 
+        msatoshi: cln_rpc::primitives::Amount::from_msat(amount.msat()),
+        label: None,
+        maxfeepercent: None,
+        retry_for: None,
+        maxdelay: None,
+        exemptfee: None,
+        routehints: None,}
+    );
+    let res = call(req).await?;
+    log::debug!("Keysend response {}", &res);
+    let de: KeysendResponseResponse = serde_json::from_str(&res).unwrap();
+    
+    Ok(())
+}
+
+// General
+
+async fn call(request: Request) -> Result<String, Error> {
+    let path = Path::new("lightning-rpc");
+    let mut rpc = ClnRpc::new(path).await?;
+    let response = rpc
+        .call(request.clone())
+        .await
+        .map_err(|e| anyhow!("Error calling {:?}: {:?}", request, e))?;
+
+    Ok(serde_json::to_string_pretty(&response)?)
+}
+
+
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Amount {

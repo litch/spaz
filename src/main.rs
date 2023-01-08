@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 use tokio;
 use tokio::{task, time};
 
-use spaz::{load_configuration, Config, list_channels, stop_handler, start_handler, list_peers, disconnect_peer};
+use spaz::{load_configuration, Config, list_channels, Amount, keysend_node, stop_handler, start_handler, list_peers, disconnect_peer, list_nodes};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -35,7 +35,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 ))
                 .await;
                 let config =  Config::current();
-                log::info!("Spazzing - config: {:?}", config);
+                log::info!("Spazzzzzzing - config: {:?}", config);
                 match spaz_out(config.clone()).await {
                     Ok(_) => {
                         log::debug!("Success");
@@ -54,7 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
 pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
     if config.active == false {
-        return Ok(())
+        // return Ok(())
     }
     let channels = list_channels().await.unwrap();
     for channel in channels {
@@ -75,6 +75,23 @@ pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
             }
             
         }
+    }
+    let nodes = list_nodes().await.unwrap();
+    for node in nodes {
+        log::debug!("Node under consideration: {:?}", node);
+        let probability = 0.05; // 5% probability
+
+        if rand::random::<f64>() < probability {
+            match keysend_node(node.nodeid, Amount::from_msat(450)).await {
+                Ok(_) => {
+                    log::info!("Successful keysend");
+                },
+                Err(err) => {
+                    log::warn!("Error doing keysend: {}", err);
+                }
+            }
+        }
+        
     }
     Ok(())
 }
