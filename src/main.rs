@@ -1,43 +1,71 @@
 #[macro_use]
 extern crate serde_json;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use anyhow::{anyhow, Error, Result};
-use std::path::Path;
-extern crate rand;
+use anyhow::{Error, Result};
 use rand::{random};
 
-use cln_plugin::{Builder, Plugin};
+use cln_plugin::{options, Builder};
 use std::time::Duration;
-use cln_rpc::{model, ClnRpc, Request};
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 
 use tokio;
 use tokio::{task, time};
 
-use spaz::{load_configuration, Config, list_channels, randomize_fee, Amount, keysend_node, open_channel, stop_handler, start_handler, list_peers, disconnect_peer, list_nodes};
+use spaz::{load_configuration, Config, list_channels, random_ping_peer, randomize_fee, Amount, keysend_node, open_channel, list_peers, disconnect_peer, list_nodes};
+
+pub async fn start_handler(
+    config_holder: Arc<Mutex<Config>>
+) -> Result<serde_json::Value, Error> {
+    log::info!("Plugin start requested");
+    config_holder.lock().unwrap().active=true;
+
+    Ok(json!("ok"))
+}
+
+pub async fn stop_handler(
+    config_holder: Arc<Mutex<Config>>
+) -> Result<serde_json::Value, Error> {
+    log::info!("Plugin stop requested");
+    
+    config_holder.lock().unwrap().active=false;
+    Ok(json!("ok"))
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-
+    let config = Config::default();
+    let config_holder = Arc::new(Mutex::new(config));
+    let start_config_holder = config_holder.clone();
+    let stop_config_holder = config_holder.clone();
+    let loop_config_holder = config_holder.clone();
     if let Some(plugin) = Builder::new((), tokio::io::stdin(), tokio::io::stdout())
-        
-        .rpcmethod("start-spazzing", "enables this plugn", start_handler)
-        .rpcmethod("stop-spazzing", "disables this plugn", stop_handler)
+        .option(options::ConfigOption::new(
+            "spaz-on-load",
+            options::Value::Boolean(false),
+            "Start spazzing on load",
+        ))
+        .option(options::ConfigOption::new(
+            "spaz-rpc-path",
+            options::Value::String("lightning-rpc".to_string()),
+            "RPC path for talking to your node",
+        ))
+        .rpcmethod("start-spazzing", "enables this plugn", move |_p,_v| { start_handler(start_config_holder.clone()) } )
+        .rpcmethod("stop-spazzing", "disables this plugn", move |_p,_v| { stop_handler(stop_config_holder.clone()) } )
 
         .start()
         .await?
     {
-        let config = load_configuration(&plugin).unwrap();
+        load_configuration(&plugin, config_holder.clone()).unwrap();
+
         task::spawn(async move {
             loop {
                 time::sleep(Duration::from_secs(
                     1
                 ))
                 .await;
-                let config =  Config::current();
-                log::info!("Spazzzzzzing - config: {:?}", config);
-                match spaz_out(config.clone()).await {
+                
+                log::info!("Spazzzzzzing - config: {:?}", loop_config_holder.lock().unwrap());
+                match spaz_out(loop_config_holder.clone()).await {
                     Ok(_) => {
                         log::debug!("Success");
                     }
@@ -81,10 +109,26 @@ pub async fn maybe_disconnect_random_peer() -> Result<(), Error> {
     for peer in peers {
         log::debug!("Peer under consideration: {:?}", peer);
         if peer.connected {
-            let probability = 0.1; // 10% probability
+            let probability = 0.1; // 1% probability
 
             if rand::random::<f64>() < probability {
                 disconnect_peer(peer.id).await.unwrap();
+            }
+            
+        }
+    }
+    Ok(())
+}
+
+pub async fn maybe_ping_peer_random_bytes() -> Result<(), Error> {
+    let peers = list_peers().await.unwrap();
+    for peer in peers {
+        log::debug!("Peer under consideration: {:?}", peer);
+        if peer.connected {
+            let probability = 0.1; // 10% probability
+
+            if rand::random::<f64>() < probability {
+                random_ping_peer(peer.id).await.unwrap();
             }
             
         }
@@ -147,13 +191,14 @@ pub async fn maybe_open_channel() -> Result<(), Error> {
     Ok(())
 }
 
-pub async fn spaz_out(config: Arc<Config>) -> Result<(), Error> {
-    if config.active == false {
-        // return Ok(())
+pub async fn spaz_out(config_holder: Arc<Mutex<Config>>) -> Result<(), Error> {
+    if config_holder.lock().unwrap().active == false {
+        return Ok(())
     }
     maybe_keysend_random_channel().await;
     maybe_disconnect_random_peer().await;
     maybe_keysend_random_node().await;
     maybe_open_channel().await;
+    maybe_ping_peer_random_bytes().await;
     Ok(())
 }

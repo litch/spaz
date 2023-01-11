@@ -2,12 +2,12 @@
 extern crate serde_json;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use anyhow::{anyhow, Error, Result};
-use std::path::Path;
+use std::{path::Path, default, sync::Mutex};
 extern crate rand;
 use rand::{random};
 
 
-use cln_plugin::{Plugin};
+use cln_plugin::{Plugin, options};
 
 use cln_rpc::{model::{self, ConnectResponse}, ClnRpc, Request};
 
@@ -19,70 +19,59 @@ pub async fn disconnect_peer(pubkey: cln_rpc::primitives::PublicKey) -> Result<(
     let res = call(req).await?;
     Ok(())
 }
+
 // Config stuff
 
-
-pub async fn start_handler(
-    _p: Plugin<()>, _v:serde_json::Value
-) -> Result<serde_json::Value, Error> {
-    log::info!("Plugin start requested");
-    let c = Config::current();
-    let active = true;
-    Config {
-        active
-    }.make_current();
-
-    Ok(json!("ok"))
-}
-
-pub async fn stop_handler(
-    _p: Plugin<()>, _v:serde_json::Value
-) -> Result<serde_json::Value, Error> {
-    log::info!("Plugin stop requested");
-    let c = Config::current();
-    let active = false;
-    Config {
-        active
-    }.make_current();
-
-    Ok(json!("ok"))
-}
-
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct Config {
     pub active: bool,
+    pub rpc_path: String,
 }
 
-impl Config {
-    pub fn default() -> Config {
-        Config {
-            active: true,
+impl Default for Config {
+    fn default() -> Self {
+        Self { 
+            active: true, 
+            rpc_path: "lightning-rpc".to_string() 
         }
     }
-
-    pub fn current() -> Arc<Config> {
-        CURRENT_CONFIG.with(|c| c.read().unwrap().clone())
-    }
-    pub fn make_current(self) {
-        CURRENT_CONFIG.with(|c| *c.write().unwrap() = Arc::new(self))
-    }
 }
 
-thread_local! {
-    static CURRENT_CONFIG: RwLock<Arc<Config>> = RwLock::new(Default::default());
-}
+pub fn load_configuration(plugin: &Plugin<()>, config_holder: Arc<Mutex<Config>>) -> Result<(), Error> {
+    let mut c = config_holder.lock().unwrap();
 
-pub fn load_configuration(plugin: &Plugin<()>) -> Result<Arc<Config>, Error> {
-    let c = Config::default();
+    let active = match plugin.option("spaz-on-load") {
+        Some(options::Value::Boolean(false)) => {
+            log::debug!("`spaz-on-load` option is set to false.  Disabling");
+            false
+        }
+        Some(options::Value::Boolean(true)) => {
+            log::debug!("`spaz-on-load` option is set to true.  Enabling.");
+            true
+        }
+        None => {
+            log::info!("Missing 'spaz-on-load' option.  Disabling.");
+            false
+        }
+        Some(o) => return Err(anyhow!("spaz-on-load is not a valid boolean: {:?}.", o)),
+    };
 
-    let active = true;
+    c.active = active;
 
-    Config {
-        active
-    }
-    .make_current();
-    log::info!("Configuration loaded: {:?}", Config::current());
-    Ok(Config::current())
+    match plugin.option("spaz-rpc-path") {
+        Some(options::Value::String(s)) => {
+            c.rpc_path = s
+        }
+        None => {
+            log::info!("Missing 'spaz-rpc-path' option.  Using default.");
+        },
+        Some(_) => {
+            log::info!("Weird 'spaz-rpc-path' value.  Using default.");
+        }
+    };
+
+    log::info!("Configuration loaded: {:?}", c);
+    Ok(())
 }
 
 // CLN Stuff
@@ -291,6 +280,26 @@ pub async fn randomize_fee(short_channel_id: &String) -> Result<(), Error> {
     Ok(())
 }
 
+// Randomly ping peer
+
+pub async fn random_ping_peer(pubkey: cln_rpc::primitives::PublicKey) -> Result<(), Error> {
+    
+    let ping_len: u32 = random::<u32>();
+    let pong_len: u32 = random::<u32>();
+    let req = Request::Ping(model::PingRequest { 
+        id: pubkey, 
+        len: Some(ping_len.into()),
+        pongbytes: Some(pong_len.into())
+     });
+     match call(req).await {
+        Ok(res) => {
+            log::info!("Pinged peer (Ping Length: {}, Pong Length: {}, Response: {})", ping_len, pong_len, res);
+            Ok(())
+        },
+        Err(e) => Err(e)
+     }    
+}
+
 // Open channel
 
 #[derive(Clone, Debug, Deserialize)]
@@ -298,12 +307,17 @@ pub struct ConnectResponseResponse {
     pub result: model::ConnectResponse
 }
 
-pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String, size: u64) -> Result<(), Error> {
+#[derive(Clone, Debug, Deserialize)]
+pub struct FundChannelResponseResponse {
+    pub result: model::FundchannelResponse
+}
+
+pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String, size: u64) -> Result<String, Error> {
     let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
     match call(req).await {
         Ok(res) => {
             let de: ConnectResponseResponse = serde_json::from_str(&res).unwrap();
-            log::info!("Tried peering! {:?}", res);
+            log::info!("Peering success {:?}", res);
         },
         Err(e) => {
             return Err(e)
@@ -325,9 +339,12 @@ pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String,
         mindepth: None,
         reserve: None,
     });
+    log::info!("Opening channel (PeerID: {}, Size: {})", pubkey.to_string(), size);
     match call(open_req).await {
         Ok(res) => {
             log::info!("Opened channel: {:?}", res);
+            let de: FundChannelResponseResponse = serde_json::from_str(&res).unwrap();
+            return Ok(de.result.txid)
         },
         Err(e) => {
             log::error!("Unable to open channel: {:?}", e);
@@ -335,7 +352,7 @@ pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String,
         }
     }
 
-    Ok(())
+    
 } 
 
 // General
