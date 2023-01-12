@@ -1,24 +1,174 @@
-#[macro_use]
 extern crate serde_json;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use anyhow::{anyhow, Error, Result};
-use std::{path::Path, default, sync::Mutex};
+use std::{path::Path, sync::Mutex};
 extern crate rand;
-use rand::{random};
-
+use rand::random;
 
 use cln_plugin::{Plugin, options};
 
-use cln_rpc::{model::{self, ConnectResponse}, ClnRpc, Request};
+use cln_rpc::{model::{self}, ClnRpc, Request};
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 
-pub async fn disconnect_peer(pubkey: cln_rpc::primitives::PublicKey) -> Result<(), Error> {
-    log::info!("Disconnecting from peer: {:?}", pubkey);
-    let req = Request::Disconnect(model::DisconnectRequest { id: pubkey, force: Some(true) });
-    let res = call(req).await?;
-    Ok(())
+pub struct ClnClient {
+    config: Arc<Mutex<Config>>
 }
+
+impl ClnClient {
+    async fn call(&self, request: Request) -> core::result::Result<String, Error> {
+        let config = self.config.lock().unwrap();
+        
+        let config_path = &config.rpc_path;
+        let path = Path::new(config_path);
+        let mut rpc = ClnRpc::new(path).await?;
+        let response = rpc
+            .call(request.clone())
+            .await
+            .map_err(|e| anyhow!("Error calling {:?}: {:?}", request, e))?;
+    
+        Ok(serde_json::to_string_pretty(&response)?)
+    }    
+
+    pub async fn disconnect_peer(&self, pubkey: cln_rpc::primitives::PublicKey) -> Result<(), Error> {
+        log::info!("Disconnecting from peer: {:?}", pubkey);
+        let req = Request::Disconnect(model::DisconnectRequest { id: pubkey, force: Some(true) });
+        let _res = self.call(req).await?;
+        Ok(())
+    }
+
+    pub async fn list_channels(&self) -> Result<Vec<Channel>, Error> {
+        let req = Request::ListFunds(model::ListfundsRequest { spent: Some(false)} );
+        let res = self.call(req).await?;
+        log::trace!("{}", &res);
+    
+        let de: ListFundsResponse = serde_json::from_str(&res).unwrap();
+        Ok(de.result.channels)
+    } 
+
+    pub async fn list_peers(&self) -> Result<Vec<Peer>, Error> {
+        let req = Request::ListPeers(model::ListpeersRequest { id: None, level: None });
+        let res = self.call(req).await?;
+        log::trace!("{}", &res);
+        let de: ListPeersResponse = serde_json::from_str(&res).unwrap();
+        Ok(de.result.peers)
+    }
+
+
+    pub async fn list_nodes(&self) -> Result<Vec<Node>, Error> {
+        let req = Request::ListNodes(model::ListnodesRequest {id: None});
+        let res = self.call(req).await?;
+        log::trace!("{}", &res);
+        let de: ListNodesResponse = serde_json::from_str(&res).unwrap();
+        Ok(de.result.nodes)
+    }
+
+    pub async fn keysend_node(&self, pubkey: cln_rpc::primitives::PublicKey, amount: Amount) -> Result<(), Error> {
+        log::info!("Keysending node {:?}, {:?}", pubkey, amount);
+        let req = Request::KeySend(model::KeysendRequest { 
+            destination: pubkey, 
+            amount_msat: cln_rpc::primitives::Amount::from_msat(amount.msat()),
+            label: None,
+            maxfeepercent: None,
+            retry_for: None,
+            maxdelay: None,
+            exemptfee: None,
+            routehints: None,
+            extratlvs: None,
+        }
+        );
+        let res = self.call(req).await?;
+        log::debug!("Keysend response {}", &res);
+        let _de: KeysendResponseResponse = serde_json::from_str(&res).unwrap();
+        
+        Ok(())
+    }
+    
+    // Randomize fee
+    
+    pub async fn randomize_fee(&self, short_channel_id: &String) -> Result<(), Error> {
+        let random_ppm: u32 = random::<u32>() % 700 + 50;
+        let random_base: u64 = random::<u64>() % 1500 + 1;
+        let req = Request::SetChannel(model::SetchannelRequest {
+            id: short_channel_id.to_string(),
+            feeppm: Some(random_ppm),
+            feebase: Some(cln_rpc::primitives::Amount::from_msat(random_base)),
+            htlcmin: None,
+            htlcmax: None,
+            enforcedelay: None,
+        });
+        let res = self.call(req).await?;
+        log::info!("Set channel: {:?}", res);
+    
+        Ok(())
+    }
+    
+    // Randomly ping peer
+    
+    pub async fn random_ping_peer(&self, pubkey: cln_rpc::primitives::PublicKey) -> Result<(), Error> {
+        
+        let ping_len: u32 = random::<u32>();
+        let pong_len: u32 = random::<u32>();
+        let req = Request::Ping(model::PingRequest { 
+            id: pubkey, 
+            len: Some(ping_len.into()),
+            pongbytes: Some(pong_len.into())
+         });
+         match self.call(req).await {
+            Ok(res) => {
+                log::info!("Pinged peer (Ping Length: {}, Pong Length: {}, Response: {})", ping_len, pong_len, res);
+                Ok(())
+            },
+            Err(e) => Err(e)
+         }    
+    }
+
+    pub async fn open_channel(&self, pubkey: cln_rpc::primitives::PublicKey, alias: String, size: u64) -> Result<String, Error> {
+        let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
+        match self.call(req).await {
+            Ok(res) => {
+                let _de: ConnectResponseResponse = serde_json::from_str(&res).unwrap();
+                log::info!("Peering success {:?}", res);
+            },
+            Err(e) => {
+                return Err(e)
+            }
+        }
+    
+        let amount = cln_rpc::primitives::AmountOrAll::Amount(cln_rpc::primitives::Amount::from_sat(size));
+        let open_req = Request::FundChannel(model::FundchannelRequest {
+            id: pubkey, 
+            amount: amount,
+            feerate: None,
+            announce: None,
+            minconf: None,
+            push_msat: None,
+            close_to: None,
+            request_amt: None,
+            compact_lease: None,
+            utxos: None,
+            mindepth: None,
+            reserve: None,
+        });
+        log::info!("Opening channel (PeerID: {}, Size: {})", pubkey.to_string(), size);
+        match self.call(open_req).await {
+            Ok(res) => {
+                log::info!("Opened channel: {:?}", res);
+                let de: FundChannelResponseResponse = serde_json::from_str(&res).unwrap();
+                return Ok(de.result.txid)
+            },
+            Err(e) => {
+                log::error!("Unable to open channel: {:?}", e);
+                return Err(e)
+            }
+        }
+    
+        
+    }
+}
+
+
+
 
 // Config stuff
 
@@ -116,14 +266,7 @@ pub enum ChannelState {
 }
 
 
-pub async fn list_channels() -> Result<Vec<Channel>, Error> {
-    let req = Request::ListFunds(model::ListfundsRequest { spent: Some(false)} );
-    let res = call(req).await?;
-    log::trace!("{}", &res);
 
-    let de: ListFundsResponse = serde_json::from_str(&res).unwrap();
-    Ok(de.result.channels)
-} 
 
 // ListPeers
 
@@ -146,13 +289,7 @@ pub struct Peer {
     pub connected: bool,
 }
 
-pub async fn list_peers() -> Result<Vec<Peer>, Error> {
-    let req = Request::ListPeers(model::ListpeersRequest { id: None, level: None });
-    let res = call(req).await?;
-    log::trace!("{}", &res);
-    let de: ListPeersResponse = serde_json::from_str(&res).unwrap();
-    Ok(de.result.peers)
-}
+
 
 // ListNodes
 
@@ -225,13 +362,6 @@ pub struct ListnodesNodesAddresses {
 }
 
 
-pub async fn list_nodes() -> Result<Vec<Node>, Error> {
-    let req = Request::ListNodes(model::ListnodesRequest {id: None});
-    let res = call(req).await?;
-    log::trace!("{}", &res);
-    let de: ListNodesResponse = serde_json::from_str(&res).unwrap();
-    Ok(de.result.nodes)
-}
 
 // Keysend a node
 
@@ -240,65 +370,7 @@ pub struct KeysendResponseResponse {
     pub result: model::KeysendResponse
 }
 
-pub async fn keysend_node(pubkey: cln_rpc::primitives::PublicKey, amount: Amount) -> Result<(), Error> {
-    log::info!("Keysending node {:?}, {:?}", pubkey, amount);
-    let req = Request::KeySend(model::KeysendRequest { 
-        destination: pubkey, 
-        amount_msat: cln_rpc::primitives::Amount::from_msat(amount.msat()),
-        label: None,
-        maxfeepercent: None,
-        retry_for: None,
-        maxdelay: None,
-        exemptfee: None,
-        routehints: None,
-        extratlvs: None,
-    }
-    );
-    let res = call(req).await?;
-    log::debug!("Keysend response {}", &res);
-    let de: KeysendResponseResponse = serde_json::from_str(&res).unwrap();
-    
-    Ok(())
-}
 
-// Randomize fee
-
-pub async fn randomize_fee(short_channel_id: &String) -> Result<(), Error> {
-    let random_ppm: u32 = random::<u32>() % 700 + 50;
-    let random_base: u64 = random::<u64>() % 1500 + 1;
-    let req = Request::SetChannel(model::SetchannelRequest {
-        id: short_channel_id.to_string(),
-        feeppm: Some(random_ppm),
-        feebase: Some(cln_rpc::primitives::Amount::from_msat(random_base)),
-        htlcmin: None,
-        htlcmax: None,
-        enforcedelay: None,
-    });
-    let res = call(req).await?;
-    log::info!("Set channel: {:?}", res);
-
-    Ok(())
-}
-
-// Randomly ping peer
-
-pub async fn random_ping_peer(pubkey: cln_rpc::primitives::PublicKey) -> Result<(), Error> {
-    
-    let ping_len: u32 = random::<u32>();
-    let pong_len: u32 = random::<u32>();
-    let req = Request::Ping(model::PingRequest { 
-        id: pubkey, 
-        len: Some(ping_len.into()),
-        pongbytes: Some(pong_len.into())
-     });
-     match call(req).await {
-        Ok(res) => {
-            log::info!("Pinged peer (Ping Length: {}, Pong Length: {}, Response: {})", ping_len, pong_len, res);
-            Ok(())
-        },
-        Err(e) => Err(e)
-     }    
-}
 
 // Open channel
 
@@ -312,61 +384,12 @@ pub struct FundChannelResponseResponse {
     pub result: model::FundchannelResponse
 }
 
-pub async fn open_channel(pubkey: cln_rpc::primitives::PublicKey, alias: String, size: u64) -> Result<String, Error> {
-    let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
-    match call(req).await {
-        Ok(res) => {
-            let de: ConnectResponseResponse = serde_json::from_str(&res).unwrap();
-            log::info!("Peering success {:?}", res);
-        },
-        Err(e) => {
-            return Err(e)
-        }
-    }
-
-    let amount = cln_rpc::primitives::AmountOrAll::Amount(cln_rpc::primitives::Amount::from_sat(size));
-    let open_req = Request::FundChannel(model::FundchannelRequest {
-        id: pubkey, 
-        amount: amount,
-        feerate: None,
-        announce: None,
-        minconf: None,
-        push_msat: None,
-        close_to: None,
-        request_amt: None,
-        compact_lease: None,
-        utxos: None,
-        mindepth: None,
-        reserve: None,
-    });
-    log::info!("Opening channel (PeerID: {}, Size: {})", pubkey.to_string(), size);
-    match call(open_req).await {
-        Ok(res) => {
-            log::info!("Opened channel: {:?}", res);
-            let de: FundChannelResponseResponse = serde_json::from_str(&res).unwrap();
-            return Ok(de.result.txid)
-        },
-        Err(e) => {
-            log::error!("Unable to open channel: {:?}", e);
-            return Err(e)
-        }
-    }
-
-    
-} 
+ 
 
 // General
 
-async fn call(request: Request) -> Result<String, Error> {
-    let path = Path::new("lightning-rpc");
-    let mut rpc = ClnRpc::new(path).await?;
-    let response = rpc
-        .call(request.clone())
-        .await
-        .map_err(|e| anyhow!("Error calling {:?}: {:?}", request, e))?;
 
-    Ok(serde_json::to_string_pretty(&response)?)
-}
+
 
 
 
