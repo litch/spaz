@@ -12,15 +12,16 @@ use cln_rpc::{model::{self}, ClnRpc, Request};
 use std::sync::{Arc};
 
 pub struct ClnClient {
-    config: Arc<RwLock<Config>>
+    pub config: Arc<RwLock<Config>>
 }
 
 impl ClnClient {
     async fn call(&self, request: Request) -> core::result::Result<String, Error> {
-        let config = self.config.read().unwrap();
+        // let config = self.config.read().unwrap();
         
-        let config_path = &config.rpc_path;
-        let path = Path::new(config_path);
+        // let config_path = &config.rpc_path;
+        // let path = Path::new(config_path);
+        let path = Path::new("/mnt/lightning/regtest/lightning-rpc");
         let mut rpc = ClnRpc::new(path).await?;
         let response = rpc
             .call(request.clone())

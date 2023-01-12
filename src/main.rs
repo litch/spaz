@@ -14,7 +14,7 @@ use tokio::{task, time};
 use spaz::{load_configuration, Config,  Amount, ClnClient};
 
 pub async fn start_handler(
-    config_holder: &Arc<RwLock<Config>>
+    config_holder: Arc<RwLock<Config>>
 ) -> Result<serde_json::Value, Error> {
     log::info!("Plugin start requested");
     let mut guard = config_holder.write().unwrap();
@@ -24,7 +24,7 @@ pub async fn start_handler(
 }
 
 pub async fn stop_handler(
-    config_holder: &Arc<RwLock<Config>>
+    config_holder: Arc<RwLock<Config>>
 ) -> Result<serde_json::Value, Error> {
     log::info!("Plugin stop requested");
     
@@ -41,6 +41,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let start_config_holder = config_holder.clone();
     let stop_config_holder = config_holder.clone();
     let loop_config_holder = config_holder.clone();
+    
     if let Some(plugin) = Builder::new((), tokio::io::stdin(), tokio::io::stdout())
         .option(options::ConfigOption::new(
             "spaz-on-load",
@@ -52,8 +53,8 @@ async fn main() -> Result<(), anyhow::Error> {
             options::Value::String("lightning-rpc".to_string()),
             "RPC path for talking to your node",
         ))
-        .rpcmethod("start-spazzing", "enables this plugn", move |_p,_v| { start_handler(&start_config_holder.clone()) } )
-        .rpcmethod("stop-spazzing", "disables this plugn", move |_p,_v| { stop_handler(&stop_config_holder.clone()) } )
+        .rpcmethod("start-spazzing", "enables this plugn", move |_p,_v| { start_handler(start_config_holder.clone()) } )
+        .rpcmethod("stop-spazzing", "disables this plugn", move |_p,_v| { stop_handler(stop_config_holder.clone()) } )
 
         .start()
         .await?
@@ -63,17 +64,17 @@ async fn main() -> Result<(), anyhow::Error> {
         task::spawn(async move {
             loop {
                 time::sleep(Duration::from_secs(
-                    1
+                    5
                 ))
                 .await;
                 
-                log::info!("Spazzzzzzing - config: {:?}", loop_config_holder.read().unwrap());
+                log::info!("Spazzing - config: {:?}", loop_config_holder.read().unwrap());
                 match spaz_out(loop_config_holder.clone()).await {
                     Ok(_) => {
                         log::debug!("Success");
                     }
                     Err(err) => {
-                        log::warn!("Error spazzing.  Proceeding: {:?}", err);
+                        log::warn!("Error spazzing.  Continuing: {:?}", err);
                     }
                 };
             }
@@ -198,7 +199,7 @@ pub async fn spaz_out(config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     if config_holder.read().unwrap().active == false {
         return Ok(())
     }
-    let client = Arc::new(ClnClient { config: config_holder });
+    let client = Arc::new(ClnClient { config: config_holder.clone() });
     maybe_keysend_random_channel(client.clone()).await;
     maybe_disconnect_random_peer(client.clone()).await;
     maybe_keysend_random_node(client.clone()).await;
