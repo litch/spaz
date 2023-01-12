@@ -85,7 +85,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-pub async fn maybe_keysend_random_channel(client: Arc<ClnClient>) -> Result<(), Error> {
+pub async fn maybe_randomize_channel_fee(client: Arc<ClnClient>) -> Result<(), Error> {
     let channels = client.list_channels().await.unwrap();
     for channel in channels {
         let probability = 0.02;
@@ -113,7 +113,7 @@ pub async fn maybe_disconnect_random_peer(client: Arc<ClnClient>) -> Result<(), 
     for peer in peers {
         log::debug!("Peer under consideration: {:?}", peer);
         if peer.connected {
-            let probability = 0.1; // 1% probability
+            let probability = 0.02; 
 
             if rand::random::<f64>() < probability {
                 client.disconnect_peer(peer.id).await.unwrap();
@@ -144,10 +144,10 @@ pub async fn maybe_keysend_random_node(client: Arc<ClnClient>) -> Result<(), Err
     let nodes = client.list_nodes().await.unwrap();
     for node in nodes {
         log::debug!("Node under consideration: {:?}", node);
-        let probability = 0.01; // 1% probability
+        let probability = 0.05; 
 
         if rand::random::<f64>() < probability {
-            let amount: u64 = random::<u64>() % 700000 + 500;
+            let amount: u64 = random::<u64>() % 700000 + 5000;
             match client.keysend_node(node.nodeid, Amount::from_msat(amount)).await {
                 Ok(_) => {
                     log::info!("Successful keysend");
@@ -166,7 +166,7 @@ pub async fn maybe_open_channel(client: Arc<ClnClient>) -> Result<(), Error> {
     let nodes = client.list_nodes().await.unwrap();
     for node in nodes {
         log::debug!("Perhaps open channel for node: {:?}", node);
-        let probability = 0.0003; // 0.03% probability
+        let probability = 0.001; 
 
         if rand::random::<f64>() < probability {
             
@@ -200,10 +200,10 @@ pub async fn spaz_out(config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
         return Ok(())
     }
     let client = Arc::new(ClnClient { config: config_holder.clone() });
-    maybe_keysend_random_channel(client.clone()).await;
+    maybe_randomize_channel_fee(client.clone()).await;
     maybe_disconnect_random_peer(client.clone()).await;
     maybe_keysend_random_node(client.clone()).await;
     maybe_open_channel(client.clone()).await;
-    maybe_ping_peer_random_bytes(client.clone()).await;
+    // maybe_ping_peer_random_bytes(client.clone()).await;
     Ok(())
 }
