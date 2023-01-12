@@ -6,7 +6,7 @@ use rand::{random};
 use cln_plugin::{options, Builder};
 use std::time::Duration;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use tokio;
 use tokio::{task, time};
@@ -14,21 +14,21 @@ use tokio::{task, time};
 use spaz::{load_configuration, Config,  Amount, ClnClient};
 
 pub async fn start_handler(
-    config_holder: &Arc<Mutex<Config>>
+    config_holder: &Arc<RwLock<Config>>
 ) -> Result<serde_json::Value, Error> {
     log::info!("Plugin start requested");
-    let mut guard = config_holder.lock().unwrap();
+    let mut guard = config_holder.write().unwrap();
     guard.active = true;
 
     Ok(json!("ok"))
 }
 
 pub async fn stop_handler(
-    config_holder: &Arc<Mutex<Config>>
+    config_holder: &Arc<RwLock<Config>>
 ) -> Result<serde_json::Value, Error> {
     log::info!("Plugin stop requested");
     
-    let mut guard = config_holder.lock().unwrap();
+    let mut guard = config_holder.write().unwrap();
     guard.active = false;
 
     Ok(json!("ok"))
@@ -37,7 +37,7 @@ pub async fn stop_handler(
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let config = Config::default();
-    let config_holder = Arc::new(Mutex::new(config));
+    let config_holder = Arc::new(RwLock::new(config));
     let start_config_holder = config_holder.clone();
     let stop_config_holder = config_holder.clone();
     let loop_config_holder = config_holder.clone();
@@ -67,7 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 ))
                 .await;
                 
-                log::info!("Spazzzzzzing - config: {:?}", loop_config_holder.lock().unwrap());
+                log::info!("Spazzzzzzing - config: {:?}", loop_config_holder.read().unwrap());
                 match spaz_out(loop_config_holder.clone()).await {
                     Ok(_) => {
                         log::debug!("Success");
@@ -194,8 +194,8 @@ pub async fn maybe_open_channel(client: Arc<ClnClient>) -> Result<(), Error> {
     Ok(())
 }
 
-pub async fn spaz_out(config_holder: Arc<Mutex<Config>>) -> Result<(), Error> {
-    if config_holder.lock().unwrap().active == false {
+pub async fn spaz_out(config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
+    if config_holder.read().unwrap().active == false {
         return Ok(())
     }
     let client = Arc::new(ClnClient { config: config_holder });

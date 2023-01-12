@@ -1,7 +1,7 @@
 extern crate serde_json;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use anyhow::{anyhow, Error, Result};
-use std::{path::Path, sync::Mutex};
+use std::{path::Path, sync::{RwLock}};
 extern crate rand;
 use rand::random;
 
@@ -12,12 +12,12 @@ use cln_rpc::{model::{self}, ClnRpc, Request};
 use std::sync::{Arc};
 
 pub struct ClnClient {
-    config: Arc<Mutex<Config>>
+    config: Arc<RwLock<Config>>
 }
 
 impl ClnClient {
     async fn call(&self, request: Request) -> core::result::Result<String, Error> {
-        let config = self.config.lock().unwrap();
+        let config = self.config.read().unwrap();
         
         let config_path = &config.rpc_path;
         let path = Path::new(config_path);
@@ -187,8 +187,8 @@ impl Default for Config {
     }
 }
 
-pub fn load_configuration(plugin: &Plugin<()>, config_holder: Arc<Mutex<Config>>) -> Result<(), Error> {
-    let mut c = config_holder.lock().unwrap();
+pub fn load_configuration(plugin: &Plugin<()>, config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
+    let mut c = config_holder.write().unwrap();
 
     let active = match plugin.option("spaz-on-load") {
         Some(options::Value::Boolean(false)) => {
