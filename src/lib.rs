@@ -267,7 +267,6 @@ pub struct ListFundsResponseFunds {
 pub struct Channel {
     pub peer_id: String,
     pub connected: bool,
-    pub state: ChannelState,
     pub our_amount_msat: Amount,
     pub amount_msat: Amount,
     pub funding_txid: String,
@@ -275,27 +274,6 @@ pub struct Channel {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub short_channel_id: Option<String>,
 }
-
-#[derive(Debug, Deserialize, Clone)]
-pub enum ChannelState {
-    OPENINGD,
-    CHANNELD_AWAITING_LOCKIN,
-    CHANNELD_NORMAL,
-    CHANNELD_SHUTTING_DOWN,
-    CLOSINGD_SIGEXCHANGE,
-    CLOSINGD_COMPLETE,
-    AWAITING_UNILATERAL,
-    FUNDING_SPEND_SEEN,
-    ONCHAIN,
-    DUALOPENED_OPEN_INIT,
-    DUALOPEND_AWAITING_LOCKIN,
-}
-
-
-
-
-// ListPeers
-
 
 #[derive(Debug, Deserialize)]
 pub struct ListPeersResponse {
