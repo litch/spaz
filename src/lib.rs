@@ -143,18 +143,41 @@ impl ClnClient {
         self.call(req).await
     }
 
-    pub async fn open_channel(&self, pubkey: cln_rpc::primitives::PublicKey, alias: String, size: u64) -> Result<String, Error> {
-        let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
-        match self.call(req).await {
-            Ok(res) => {
-                let _de: ConnectResponseResponse = serde_json::from_str(&res).unwrap();
-                log::info!("Peering success {:?}", res);
+    
+    
+    
+
+    pub async fn open_channel_to_node(&self, node: Node, size: u64) -> Result<String, Error> {
+        let mut ipv4_address: Option<ListnodesNodesAddress>;
+        ipv4_address = None;
+        match node.addresses {
+            Some(addresses) => {
+                for address in addresses {
+                    match address.item_type {
+                        ListnodesNodesAddressType::IPV4 => { ipv4_address = Some(address) },
+                        _ => { log::debug!("Not an IPV4")}
+                    }
+                }
             },
-            Err(e) => {
-                return Err(e)
+            None => {
+                log::info!("Node does not have any addresses, bypassing");
+                return Err(MyCustomError::NodeNotAddressableError.into())
             }
         }
-    
+        if ipv4_address.is_some() {
+            let address = ipv4_address.unwrap();
+            let req = Request::Connect(model::ConnectRequest { id: node.nodeid.to_string(), host: address.address, port: Some(address.port) });
+            match self.call(req).await {
+                Ok(res) => {
+                    let _de: ConnectResponseResponse = serde_json::from_str(&res).unwrap();
+                    log::info!("Peering success {:?}", res);
+                },
+                Err(_e) => {
+                    return Err(MyCustomError::ConnectionFailedError.into())
+                }
+            }
+        }
+        let pubkey = node.nodeid;
         let amount = cln_rpc::primitives::AmountOrAll::Amount(cln_rpc::primitives::Amount::from_sat(size));
         let open_req = Request::FundChannel(model::FundchannelRequest {
             id: pubkey, 
@@ -320,12 +343,12 @@ pub struct Node {
     #[serde(alias = "features", skip_serializing_if = "Option::is_none")]
     pub features: Option<String>,
     #[serde(alias = "addresses", skip_serializing_if = "crate::is_none_or_empty")]
-    pub addresses: Option<Vec<ListnodesNodesAddresses>>,
+    pub addresses: Option<Vec<ListnodesNodesAddress>>,
 }
 
 /// Type of connection
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
-pub enum ListnodesNodesAddressesType {
+pub enum ListnodesNodesAddressType {
     #[serde(rename = "dns")]
     DNS,
     #[serde(rename = "ipv4")]
@@ -340,43 +363,35 @@ pub enum ListnodesNodesAddressesType {
     WEBSOCKET,
 }
 
-impl TryFrom<i32> for ListnodesNodesAddressesType {
+impl TryFrom<i32> for ListnodesNodesAddressType {
     type Error = anyhow::Error;
-    fn try_from(c: i32) -> Result<ListnodesNodesAddressesType, anyhow::Error> {
+    fn try_from(c: i32) -> Result<ListnodesNodesAddressType, anyhow::Error> {
         match c {
-    0 => Ok(ListnodesNodesAddressesType::DNS),
-    1 => Ok(ListnodesNodesAddressesType::IPV4),
-    2 => Ok(ListnodesNodesAddressesType::IPV6),
-    3 => Ok(ListnodesNodesAddressesType::TORV2),
-    4 => Ok(ListnodesNodesAddressesType::TORV3),
-    5 => Ok(ListnodesNodesAddressesType::WEBSOCKET),
+    0 => Ok(ListnodesNodesAddressType::DNS),
+    1 => Ok(ListnodesNodesAddressType::IPV4),
+    2 => Ok(ListnodesNodesAddressType::IPV6),
+    3 => Ok(ListnodesNodesAddressType::TORV2),
+    4 => Ok(ListnodesNodesAddressType::TORV3),
+    5 => Ok(ListnodesNodesAddressType::WEBSOCKET),
             o => Err(anyhow::anyhow!("Unknown variant {} for enum ListnodesNodesAddressesType", o)),
         }
     }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ListnodesNodesAddresses {
+pub struct ListnodesNodesAddress {
     // Path `ListNodes.nodes[].addresses[].type`
     #[serde(rename = "type")]
-    pub item_type: ListnodesNodesAddressesType,
+    pub item_type: ListnodesNodesAddressType,
     #[serde(alias = "port")]
     pub port: u16,
     #[serde(alias = "address", skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
 }
 
-
-
-// Keysend a node
-
 #[derive(Clone, Debug, Deserialize)]
 pub struct KeysendResponseResponse { 
     pub result: model::KeysendResponse
 }
-
-
-
-// Open channel
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct ConnectResponseResponse { 
@@ -387,15 +402,6 @@ pub struct ConnectResponseResponse {
 pub struct FundChannelResponseResponse {
     pub result: model::FundchannelResponse
 }
-
- 
-
-// General
-
-
-
-
-
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Amount {
@@ -468,4 +474,24 @@ impl From<Amount> for String {
     fn from(a: Amount) -> String {
         format!("{}msat", a.msat)
     }
+}
+
+
+use std::fmt;
+
+#[derive(Debug)]
+pub enum MyCustomError {
+  NodeNotAddressableError,
+  ConnectionFailedError,
+}
+
+impl std::error::Error for MyCustomError {}
+
+impl fmt::Display for MyCustomError {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      MyCustomError::NodeNotAddressableError => write!(f, "Node not addressable"),
+      MyCustomError::ConnectionFailedError => write!(f, "Could not connect to node"),
+    }
+  }
 }

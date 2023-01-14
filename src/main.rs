@@ -171,26 +171,16 @@ pub async fn maybe_open_channel(client: Arc<ClnClient>, config_holder: Arc<RwLoc
         if rand::random::<f64>() < probability {
             
             let amount: u64 = random::<u64>() % 1000000 + 500000;
-            
-            match node.alias {
-                Some(alias) => {
-                    match client.open_channel(node.nodeid, alias, amount).await {
-                        Ok(_) => {
-                            log::info!("Successfully opened channel");
-                        },
-                        Err(err) => {
-                            log::warn!("Error attempting to open channel: {}", err);
-                        }
-                    }
+            match client.open_channel_to_node(node, amount).await {
+                Ok(_) => {
+                    log::info!("Successfully opened channel");
                 },
-                None => {
-                    log::debug!("Unable to try to open channel, do not have alias")
-                }
-            }
-        
-            
+                Err(err) => {
+                    log::warn!("Error attempting to open channel: {}", err);
+                    return Err(err)
+                }   
+            }   
         }
-        
     }
     Ok(())
 }
