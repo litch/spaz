@@ -194,15 +194,21 @@ impl ClnClient {
 
 #[derive(Debug)]
 pub struct Config {
-    pub active: bool,
     pub rpc_path: String,
+
+    pub active: bool,
+    pub open_probability: f64,
+    pub close_probability: f64,
+
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self { 
             active: true, 
-            rpc_path: "lightning-rpc".to_string() 
+            rpc_path: "lightning-rpc".to_string(),
+            open_probability: 0.01,
+            close_probability: 0.0005,
         }
     }
 }

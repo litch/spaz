@@ -162,11 +162,11 @@ pub async fn maybe_keysend_random_node(client: Arc<ClnClient>) -> Result<(), Err
     Ok(())
 }
 
-pub async fn maybe_open_channel(client: Arc<ClnClient>) -> Result<(), Error> {
+pub async fn maybe_open_channel(client: Arc<ClnClient>, config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     let nodes = client.list_nodes().await?;
     for node in nodes {
         log::debug!("Perhaps open channel for node: {:?}", node);
-        let probability = 0.05; 
+        let probability = config_holder.read().unwrap().open_probability; 
 
         if rand::random::<f64>() < probability {
             
@@ -195,11 +195,11 @@ pub async fn maybe_open_channel(client: Arc<ClnClient>) -> Result<(), Error> {
     Ok(())
 }
 
-pub async fn maybe_close_channel(client: Arc<ClnClient>) -> Result<(), Error> {
+pub async fn maybe_close_channel(client: Arc<ClnClient>, config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     let channels = client.list_channels().await?;
     for channel in channels {
         log::debug!("May close this channel: {:?}", channel);
-        let probability = 0.0005; 
+        let probability = config_holder.read().unwrap().close_probability;
 
         if rand::random::<f64>() < probability {
             match channel.short_channel_id {
@@ -221,12 +221,12 @@ pub async fn maybe_close_channel(client: Arc<ClnClient>) -> Result<(), Error> {
     Ok(())
 }
 
-pub async fn manage_channel_count(client: Arc<ClnClient>) -> Result<(), Error> {
+pub async fn manage_channel_count(client: Arc<ClnClient>, config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     let channels = client.list_channels().await?;
     if channels.len() < 20 {
-        return maybe_open_channel(client).await
+        return maybe_open_channel(client, config_holder).await
     } else {
-        return maybe_close_channel(client).await
+        return maybe_close_channel(client, config_holder).await
     }
 }
 
@@ -239,7 +239,7 @@ pub async fn spaz_out(config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     maybe_randomize_channel_fee(client.clone()).await?;
     maybe_disconnect_random_peer(client.clone()).await?;
     maybe_keysend_random_node(client.clone()).await?;
-    maybe_open_channel(client.clone()).await?;
+    manage_channel_count(client.clone(), config_holder).await?;
     // maybe_ping_peer_random_bytes(client.clone()).await;
     Ok(())
 }
