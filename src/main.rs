@@ -86,7 +86,7 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 pub async fn maybe_randomize_channel_fee(client: Arc<ClnClient>) -> Result<(), Error> {
-    let channels = client.list_channels().await.unwrap();
+    let channels = client.list_channels().await?;
     for channel in channels {
         let probability = 0.02;
         if rand::random::<f64>() < probability {
@@ -109,14 +109,14 @@ pub async fn maybe_randomize_channel_fee(client: Arc<ClnClient>) -> Result<(), E
 }
 
 pub async fn maybe_disconnect_random_peer(client: Arc<ClnClient>) -> Result<(), Error> {
-    let peers = client.list_peers().await.unwrap();
+    let peers = client.list_peers().await?;
     for peer in peers {
         log::debug!("Peer under consideration: {:?}", peer);
         if peer.connected {
             let probability = 0.02; 
 
             if rand::random::<f64>() < probability {
-                client.disconnect_peer(peer.id).await.unwrap();
+                client.disconnect_peer(peer.id).await?;
             }
             
         }
@@ -141,7 +141,7 @@ pub async fn maybe_ping_peer_random_bytes(client: Arc<ClnClient>) -> Result<(), 
 }
 
 pub async fn maybe_keysend_random_node(client: Arc<ClnClient>) -> Result<(), Error> {
-    let nodes = client.list_nodes().await.unwrap();
+    let nodes = client.list_nodes().await?;
     for node in nodes {
         log::debug!("Node under consideration: {:?}", node);
         let probability = 0.05; 
@@ -163,7 +163,7 @@ pub async fn maybe_keysend_random_node(client: Arc<ClnClient>) -> Result<(), Err
 }
 
 pub async fn maybe_open_channel(client: Arc<ClnClient>) -> Result<(), Error> {
-    let nodes = client.list_nodes().await.unwrap();
+    let nodes = client.list_nodes().await?;
     for node in nodes {
         log::debug!("Perhaps open channel for node: {:?}", node);
         let probability = 0.001; 
@@ -199,11 +199,12 @@ pub async fn spaz_out(config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     if config_holder.read().unwrap().active == false {
         return Ok(())
     }
-    let client = Arc::new(ClnClient { config: config_holder.clone() });
-    maybe_randomize_channel_fee(client.clone()).await;
-    maybe_disconnect_random_peer(client.clone()).await;
-    maybe_keysend_random_node(client.clone()).await;
-    maybe_open_channel(client.clone()).await;
+    let rpc_path = config_holder.read().unwrap().rpc_path.clone();
+    let client = Arc::new(ClnClient { rpc_path: rpc_path } );
+    maybe_randomize_channel_fee(client.clone()).await?;
+    maybe_disconnect_random_peer(client.clone()).await?;
+    maybe_keysend_random_node(client.clone()).await?;
+    maybe_open_channel(client.clone()).await?;
     // maybe_ping_peer_random_bytes(client.clone()).await;
     Ok(())
 }
