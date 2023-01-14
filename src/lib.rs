@@ -130,6 +130,19 @@ impl ClnClient {
          }    
     }
 
+    pub async fn close_channel(&self, short_channel_id: &String) -> Result<String, Error> {
+        let req = Request::Close(model::CloseRequest { 
+            id: short_channel_id.to_string(),
+            unilateraltimeout: None,
+            destination: None,
+            fee_negotiation_step: None,
+            wrong_funding: None, 
+            force_lease_closed: None,
+            feerange: None,
+        });
+        self.call(req).await
+    }
+
     pub async fn open_channel(&self, pubkey: cln_rpc::primitives::PublicKey, alias: String, size: u64) -> Result<String, Error> {
         let req = Request::Connect(model::ConnectRequest { id: pubkey.to_string(), host: Some(alias), port: Some(9735) });
         match self.call(req).await {

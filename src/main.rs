@@ -166,7 +166,7 @@ pub async fn maybe_open_channel(client: Arc<ClnClient>) -> Result<(), Error> {
     let nodes = client.list_nodes().await?;
     for node in nodes {
         log::debug!("Perhaps open channel for node: {:?}", node);
-        let probability = 0.001; 
+        let probability = 0.05; 
 
         if rand::random::<f64>() < probability {
             
@@ -179,7 +179,7 @@ pub async fn maybe_open_channel(client: Arc<ClnClient>) -> Result<(), Error> {
                             log::info!("Successfully opened channel");
                         },
                         Err(err) => {
-                            log::warn!("Error attempting to connect: {}", err);
+                            log::warn!("Error attempting to open channel: {}", err);
                         }
                     }
                 },
@@ -193,6 +193,41 @@ pub async fn maybe_open_channel(client: Arc<ClnClient>) -> Result<(), Error> {
         
     }
     Ok(())
+}
+
+pub async fn maybe_close_channel(client: Arc<ClnClient>) -> Result<(), Error> {
+    let channels = client.list_channels().await?;
+    for channel in channels {
+        log::debug!("May close this channel: {:?}", channel);
+        let probability = 0.0005; 
+
+        if rand::random::<f64>() < probability {
+            match channel.short_channel_id {
+                Some(id) => match client.close_channel(&id).await {
+                    Ok(_) => {
+                        log::info!("Closed channel: {:?}", id);
+                    },
+                    Err(e) => {
+                        log::warn!("Error trying to close channel: {}", e);
+                    }
+                },
+                None => {
+                    log::debug!("Unable to try to open channel, do not have alias")
+                }
+            }
+        }
+        
+    }
+    Ok(())
+}
+
+pub async fn manage_channel_count(client: Arc<ClnClient>) -> Result<(), Error> {
+    let channels = client.list_channels().await?;
+    if channels.len() < 20 {
+        return maybe_open_channel(client).await
+    } else {
+        return maybe_close_channel(client).await
+    }
 }
 
 pub async fn spaz_out(config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
