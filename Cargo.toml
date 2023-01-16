@@ -21,3 +21,8 @@ anyhow = "1.0.57"
 tonic = { version = "^0.5", features = ["tls", "transport"] }
 serde = { version = "1.0.131", features = ["derive"] }
 rand = "0.7"
+hex = "0.4.3"
+
+[dependencies.bitcoin]
+version = "0.29"
+features = ["serde"]

@@ -4,6 +4,7 @@ use anyhow::{Error, Result};
 use rand::{random};
 
 use cln_plugin::{options, Builder};
+use std::any::Any;
 use std::time::Duration;
 
 use std::sync::{Arc, RwLock};
@@ -185,6 +186,30 @@ pub async fn maybe_open_channel(client: Arc<ClnClient>, config_holder: Arc<RwLoc
     Ok(())
 }
 
+pub async fn maybe_poke_node(client: Arc<ClnClient>) -> Result<(), Error> {
+    let nodes = client.list_nodes().await?;
+    for node in nodes {
+        log::debug!("Perhaps poke node: {:?}", node);
+        let probability = 0.025;
+
+        if rand::random::<f64>() < probability {
+            
+            let amount: u64 = random::<u64>() % 1000000 + 500000;
+            match client.poke_node(node.nodeid, amount).await {
+                Ok(_) => {
+                    log::info!("Successfully sent poke");
+                },
+                Err(err) => {
+                    log::warn!("Error attempting to poke node: {}", err);
+                    return Err(err)
+                }   
+            }   
+        }
+    }
+    Ok(())
+}
+
+
 pub async fn maybe_close_channel(client: Arc<ClnClient>, config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     let channels = client.list_channels().await?;
     for channel in channels {
@@ -230,6 +255,7 @@ pub async fn spaz_out(config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     maybe_disconnect_random_peer(client.clone()).await?;
     maybe_keysend_random_node(client.clone()).await?;
     manage_channel_count(client.clone(), config_holder).await?;
+    maybe_poke_node(client.clone()).await?;
     // maybe_ping_peer_random_bytes(client.clone()).await;
     Ok(())
 }

@@ -1,13 +1,21 @@
 extern crate serde_json;
+use bitcoin::hashes::{Hash};
+use hex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use anyhow::{anyhow, Error, Result};
 use std::{path::Path, sync::{RwLock}};
 extern crate rand;
-use rand::random;
 
+use rand::{random, Rng};
+use rand::RngCore;
+use rand::{SeedableRng};
+use rand::rngs::StdRng;
+
+use std::convert::TryInto;
 use cln_plugin::{Plugin, options};
 
 use cln_rpc::{model::{self}, ClnRpc, Request};
+pub use bitcoin::hashes::sha256::Hash as Sha256;
 
 use std::sync::{Arc};
 
@@ -90,6 +98,72 @@ impl ClnClient {
         
         Ok(())
     }
+
+    fn convert_route(&self, routes: Vec<model::GetrouteRoute>) -> Vec<model::SendpayRoute> {
+        routes.into_iter()
+            .map(|route| model::SendpayRoute {
+                amount_msat: route.amount_msat,
+                id: route.id,
+                delay: route.delay as u16,
+                channel: route.channel,
+            })
+            .collect()
+    }
+
+    
+
+    pub async fn poke_node(&self, pubkey: cln_rpc::primitives::PublicKey, amount: u64) -> Result<(), Error> {
+        log::info!("Poking node {:?}, {:?}", pubkey, amount);
+        let amount = cln_rpc::primitives::Amount::from_msat(amount);
+        let route_req = Request::GetRoute(model::GetrouteRequest {
+            id: pubkey,
+            amount_msat: amount,
+            riskfactor: 1,
+            cltv: None,
+            fromid: None,
+            fuzzpercent: None,
+            exclude: None,
+            maxhops: None,
+        });
+        let route_res = self.call(route_req).await?;
+        log::debug!("Get route response: {}", route_res);
+        let de: GetrouteResponseResponse = serde_json::from_str(&route_res).unwrap();
+
+        // let str_value = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        // let bytes = hex::decode(str_value).unwrap();
+        // let payment_hash = Sha256::all_zeros();
+
+        
+        // let mut rng = rand::thread_rng();
+        let mut rng = StdRng::from_entropy();
+
+        let mut random_bytes = [0u8; 32];
+        rng.fill_bytes(&mut random_bytes);
+        // let random_string = hex::encode(random_bytes);        // let random_string = hex::encode(random_bytes);
+        let payment_hash = Sha256::from_slice(&random_bytes).unwrap();
+
+        let secret_value = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
+        let payment_secret = cln_rpc::primitives::Secret::try_from(secret_value).unwrap();
+
+        let req = Request::SendPay(model::SendpayRequest {
+            route: self.convert_route(de.result.route),
+            payment_hash: payment_hash,
+            label: None,
+            amount_msat: Some(amount),
+            bolt11: None,
+            payment_secret: Some(payment_secret),
+            partid: None,
+            localinvreqid: None,
+            groupid: None,
+            
+        }
+        );
+        let res = self.call(req).await?;
+        log::debug!("poking response {}", &res);
+        // let _de: KeysendResponseResponse = serde_json::from_str(&res).unwrap();
+        
+        Ok(())
+    }
     
     // Randomize fee
     
@@ -142,10 +216,6 @@ impl ClnClient {
         });
         self.call(req).await
     }
-
-    
-    
-    
 
     pub async fn open_channel_to_node(&self, node: Node, size: u64) -> Result<String, Error> {
         let mut ipv4_address: Option<ListnodesNodesAddress>;
@@ -208,10 +278,9 @@ impl ClnClient {
     
         
     }
+
+    
 }
-
-
-
 
 // Config stuff
 
@@ -274,6 +343,10 @@ pub fn load_configuration(plugin: &Plugin<()>, config_holder: Arc<RwLock<Config>
 }
 
 // CLN Stuff
+#[derive(Debug, Deserialize)]
+struct GetrouteResponseResponse {
+    result: model::GetrouteResponse
+}
 
 // ListChannels
 #[derive(Debug, Deserialize)]
