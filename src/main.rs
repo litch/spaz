@@ -252,7 +252,7 @@ pub async fn spaz_out(config_holder: Arc<RwLock<Config>>) -> Result<(), Error> {
     let rpc_path = config_holder.read().unwrap().rpc_path.clone();
     let client = Arc::new(ClnClient { rpc_path: rpc_path } );
     maybe_randomize_channel_fee(client.clone()).await?;
-    maybe_disconnect_random_peer(client.clone()).await?;
+    // maybe_disconnect_random_peer(client.clone()).await?;
     maybe_keysend_random_node(client.clone()).await?;
     manage_channel_count(client.clone(), config_holder).await?;
     maybe_poke_node(client.clone()).await?;
